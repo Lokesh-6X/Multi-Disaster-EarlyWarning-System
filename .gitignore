@@ -1,0 +1,40 @@
+# Secrets (NFR-08)
+.env
+simulator/.env
+config/mosquitto/passwd
+
+# Runtime data (design/14)
+logs/
+backups/
+tools/
+config/demo-snapshot.*
+
+# Model files: only registry.json is committed (design/01 §1.6)
+models/*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Training data and outputs (kept on Kaggle, DD128)
+ml/data/raw/
+ml/data/processed/
+ml/outputs/
+lightning_logs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editors, tools and OS
+.sf/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

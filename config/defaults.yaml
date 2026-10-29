@@ -1,0 +1,1007 @@
+# System defaults: the key catalogue shipped with the software (design/04 §4.3, §4.7).
+# Synced into config_key / config_key_region_default by `python -m ews.common.config sync` (DD110),
+# which start.ps1 runs after the migrations. A key removed here is marked deprecated, never deleted.
+#
+# Per key: type (number | integer | string | boolean | integer_list), levels (default, site, kit:
+# where a value may be set, CFG-02), default or region_defaults, optional computed_from, required
+# (levels where a value must exist), unit, rules (min, max, allowed, order group, ...), description.
+# Order groups (04 §4.4 step 7): members must increase in the listed order.
+
+# --- 4.3.1 Site identity -----------------------------------------------------------------------
+
+site_name:
+  type: string
+  levels: [site]
+  required: [site]
+  rules: { min_length: 1, max_length: 100 }
+  description: Name of the site shown in the dashboard and emails.
+
+lat:
+  type: number
+  levels: [site, kit]
+  required: [site, kit]
+  unit: "°"
+  rules: { min: -90, max: 90, inside_site: true }
+  description: Latitude. A kit's value must be set and lie inside the site area.
+
+lon:
+  type: number
+  levels: [site, kit]
+  required: [site, kit]
+  unit: "°"
+  rules: { min: -180, max: 180, inside_site: true }
+  description: Longitude.
+
+site_radius_km:
+  type: number
+  default: 2.0
+  levels: [default, site]
+  unit: km
+  rules: { min: 0.1, max: 50 }
+  description: Radius of the site area; every kit must lie inside it (CFG-03).
+
+elevation_m:
+  type: number
+  levels: [default, site, kit]
+  required: [site]
+  unit: m
+  rules: { min: -100, max: 6000 }
+  description: Height of the sensor above sea level (ground + mounting); a kit without its own value uses the site's (DP-05).
+
+timezone:
+  type: string
+  default: Asia/Kolkata
+  levels: [default, site]
+  rules: { iana_timezone: true }
+  description: IANA time zone of the site, used for local days and display.
+
+region_type:
+  type: string
+  levels: [site]
+  required: [site]
+  rules: { allowed: [plains, coastal, hilly] }
+  description: Region type; selects the heatwave defaults and re-runs onboarding when changed.
+
+# --- 4.3.2 Kit description and hardware --------------------------------------------------------
+
+kit_zone:
+  type: string
+  levels: [kit]
+  required: [kit]
+  rules: { min_length: 1, max_length: 60, unique_among_enabled_kits: true }
+  description: Zone of the site the kit stands for, e.g. "Sports Ground".
+
+kit_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: false retires the kit; its messages are rejected (kit disabled).
+
+mount_height_m:
+  type: number
+  default: 2.0
+  levels: [default, kit]
+  unit: m
+  rules: { min: 0.5, max: 30 }
+  description: Height of the sensors above the ground.
+
+exposure:
+  type: string
+  levels: [kit]
+  required: [kit]
+  rules: { allowed: [rooftop, open_ground, between_buildings, under_trees] }
+  description: Where the kit stands; used for interpretation only.
+
+cal_temp_offset_c:
+  type: number
+  default: 0
+  levels: [default, kit]
+  unit: "°C"
+  rules: { min: -5, max: 5 }
+  description: Temperature calibration offset of this kit; 0 means no correction.
+
+cal_rh_offset_pct:
+  type: number
+  default: 0
+  levels: [default, kit]
+  unit: "%"
+  rules: { min: -15, max: 15 }
+  description: Relative humidity calibration offset of this kit.
+
+cal_pressure_offset_hpa:
+  type: number
+  default: 0
+  levels: [default, kit]
+  unit: hPa
+  rules: { min: -5, max: 5 }
+  description: Pressure calibration offset of this kit.
+
+sensor_bme280_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: Use the BME280 (temperature, humidity, pressure); fields of disabled sensors are ignored.
+
+sensor_dht11_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: Use the DHT11 (temperature, humidity).
+
+sensor_anemometer_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: Use the anemometer (wind speed and gusts).
+
+sensor_rain_gauge_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: Use the rain gauge, e.g. false while the gauge is broken.
+
+sensor_wind_vane_enabled:
+  type: boolean
+  default: true
+  levels: [default, kit]
+  description: Use the wind vane; only if the kit sends wind_dir_deg (HW-11).
+
+sampling_interval_s:
+  type: integer
+  default: 60
+  levels: [default, site, kit]
+  unit: s
+  rules: { allowed: [30, 60, 120, 300] }
+  description: Expected interval between messages of a kit (HW-07).
+
+rain_mm_per_tip:
+  type: number
+  default: 0.28
+  levels: [default, kit]
+  unit: mm
+  rules: { min: 0.1, max: 1.0 }
+  description: Rain per tip of the tipping-bucket gauge (DP-04).
+
+# --- 4.3.3 Ingestion and data quality ----------------------------------------------------------
+
+ingest_grace_period_s:
+  type: integer
+  default: 120
+  levels: [default]
+  unit: s
+  rules: { min: 0, max: 900 }
+  description: Grace period for late readings before a time bucket is treated as complete (DP-08).
+
+kit_offline_timeout_s:
+  type: integer
+  default: 300
+  levels: [default, site]
+  unit: s
+  rules: { min: 60, max: 3600, at_least_twice: sampling_interval_s }
+  description: Time without data after which a kit counts as offline (DP-09).
+
+qc_clock_skew_max_s:
+  type: integer
+  default: 120
+  levels: [default]
+  unit: s
+  rules: { min: 5, max: 3600 }
+  description: Largest accepted difference between the kit clock and the server clock (DP-01).
+
+qc_temp_min_c:
+  type: number
+  default: -10
+  levels: [default, site]
+  unit: "°C"
+  rules: { order: qc_temp }
+  description: Lowest plausible temperature (range check, DP-20).
+
+qc_temp_max_c:
+  type: number
+  default: 55
+  levels: [default, site]
+  unit: "°C"
+  rules: { order: qc_temp }
+  description: Highest plausible temperature.
+
+qc_rh_min_pct:
+  type: number
+  default: 0
+  levels: [default]
+  unit: "%"
+  rules: { order: qc_rh }
+  description: Lowest plausible relative humidity.
+
+qc_rh_max_pct:
+  type: number
+  default: 100
+  levels: [default]
+  unit: "%"
+  rules: { order: qc_rh }
+  description: Highest plausible relative humidity.
+
+qc_pressure_min_hpa:
+  type: number
+  default: 850
+  levels: [default, site]
+  unit: hPa
+  rules: { order: qc_pressure }
+  description: Lowest plausible sea-level pressure.
+
+qc_pressure_max_hpa:
+  type: number
+  default: 1100
+  levels: [default, site]
+  unit: hPa
+  rules: { order: qc_pressure }
+  description: Highest plausible sea-level pressure.
+
+qc_wind_max_kmh:
+  type: number
+  default: 200
+  levels: [default]
+  unit: km/h
+  description: Highest plausible wind speed or gust.
+
+qc_spike_temp_c:
+  type: number
+  default: 5
+  levels: [default]
+  unit: "°C"
+  description: Temperature change per reading interval above which the reading is a spike (DP-21).
+
+qc_spike_rh_pct:
+  type: number
+  default: 20
+  levels: [default]
+  unit: "%"
+  description: Humidity change per reading interval above which the reading is a spike.
+
+qc_spike_pressure_hpa:
+  type: number
+  default: 3
+  levels: [default]
+  unit: hPa
+  description: Pressure change per reading interval above which the reading is a spike; above a squall's 1-3 hPa jump.
+
+qc_stuck_temp_min:
+  type: integer
+  default: 120
+  levels: [default]
+  unit: min
+  description: Minutes with an identical temperature before it counts as stuck (DP-22).
+
+qc_stuck_rh_min:
+  type: integer
+  default: 180
+  levels: [default]
+  unit: min
+  description: Minutes with an identical humidity before it counts as stuck.
+
+qc_stuck_pressure_min:
+  type: integer
+  default: 120
+  levels: [default]
+  unit: min
+  description: Minutes with an identical pressure before it counts as stuck (wind and rain are not checked).
+
+qc_cross_sensor_temp_c:
+  type: number
+  default: 4
+  levels: [default]
+  unit: "°C"
+  description: Largest accepted difference between the BME280 and DHT11 temperatures (DP-23).
+
+qc_neighbour_temp_c:
+  type: number
+  default: 3
+  levels: [default, site]
+  unit: "°C"
+  description: Largest accepted difference from the median of the other kits; replaced by the learned spread when available (DP-24).
+
+qc_neighbour_pressure_hpa:
+  type: number
+  default: 1.0
+  levels: [default, site]
+  unit: hPa
+  description: Largest accepted sea-level pressure difference from the median of the other kits.
+
+qc_external_temp_c:
+  type: number
+  default: 6
+  levels: [default, site]
+  unit: "°C"
+  description: Largest accepted difference from the current Open-Meteo temperature (DP-25).
+
+qc_external_pressure_hpa:
+  type: number
+  default: 4
+  levels: [default, site]
+  unit: hPa
+  description: Largest accepted difference from the current Open-Meteo pressure.
+
+qc_rain_max_mm_per_min:
+  type: number
+  default: 5
+  levels: [default]
+  unit: mm
+  description: Rain per minute (about 300 mm/h) above which the reading counts as faulty.
+
+qc_spike_confirm_readings:
+  type: integer
+  default: 3
+  levels: [default]
+  description: Readings at the new level that turn a spike into an accepted level change.
+
+qc_neighbour_min_kits:
+  type: integer
+  default: 3
+  levels: [default]
+  description: Kits needed before the neighbour check runs.
+
+qc_coverage_min_pct:
+  type: integer
+  default: 80
+  levels: [default]
+  unit: "%"
+  description: Share of expected readings needed for a windowed feature or aggregate value.
+
+late_window_min:
+  type: integer
+  default: 180
+  levels: [default]
+  unit: min
+  description: Late readings up to this age trigger recomputation of derived features.
+
+# --- 4.3.4 Climate normals and onboarding ------------------------------------------------------
+
+normals_start_year:
+  type: integer
+  default: 1991
+  levels: [default, site]
+  rules: { order: normals_years, min_span_years: 19 }
+  description: First year of the climate normals period.
+
+normals_end_year:
+  type: integer
+  default: 2020
+  levels: [default, site]
+  rules: { order: normals_years, min_span_years: 19 }
+  description: Last year of the climate normals period.
+
+normals_smoothing_days:
+  type: integer
+  default: 15
+  levels: [default]
+  unit: days
+  rules: { min: 1, max: 31, odd: true }
+  description: Window of the moving average that smooths the daily normals.
+
+history_years:
+  type: integer
+  default: 30
+  levels: [default, site]
+  unit: years
+  rules: { min: 20, max: 40 }
+  description: Minimum number of complete years of history required for onboarding.
+
+history_source:
+  type: string
+  default: open_meteo_archive
+  levels: [default]
+  rules: { allowed: [open_meteo_archive, era5] }
+  description: Source of the hourly history used for normals and back-tests.
+
+rain_intensity_percentile:
+  type: number
+  default: 99
+  levels: [default, site]
+  rules: { min: 90, max: 99.9 }
+  description: Percentile of wet hours that gives the computed rain-burst threshold (D32, DD104).
+
+rain_wet_hour_min_mm:
+  type: number
+  default: 0.1
+  levels: [default]
+  unit: mm
+  rules: { min: 0.1, max: 1.0 }
+  description: An hour with at least this much rain counts as wet.
+
+rain_intensity_floor_mm:
+  type: number
+  default: 20
+  levels: [default, site]
+  unit: mm
+  rules: { min: 5, max: 100 }
+  description: The computed rain-burst threshold (mm in 1 h) is never lower than this.
+
+heat_normal_offset_min_days:
+  type: integer
+  default: 28
+  levels: [default]
+  unit: days
+  rules: { min: 14, max: 90 }
+  description: Complete days of kit data before the normal offset is computed (D33, DD105).
+
+heat_normal_offset_enabled:
+  type: boolean
+  default: true
+  levels: [default, site]
+  description: Add the kit's normal offset to the heatwave normal.
+
+backtest_events_per_hazard:
+  type: integer
+  default: 10
+  levels: [default]
+  rules: { min: 1, max: 30 }
+  description: Historical events per hazard used in the onboarding back-test.
+
+# --- 4.3.5 Forecast ----------------------------------------------------------------------------
+
+forecast_interval_min:
+  type: integer
+  default: 15
+  levels: [default]
+  unit: min
+  rules: { allowed: [15] }
+  description: Interval between forecast runs (fixed by AL-07; the key exists for documentation).
+
+forecast_horizon_h:
+  type: integer
+  default: 72
+  levels: [default]
+  unit: h
+  rules: { allowed: [72] }
+  description: Forecast horizon.
+
+report_horizons_h:
+  type: integer_list
+  default: [1, 3, 6, 24, 72]
+  levels: [default]
+  unit: h
+  description: Horizons shown in the model reports.
+
+external_fetch_interval_min:
+  type: integer
+  default: 60
+  levels: [default]
+  unit: min
+  rules: { min: 15, max: 360 }
+  description: Interval between Open-Meteo forecast fetches (DP-10).
+
+shadow_chronos_enabled:
+  type: boolean
+  default: false
+  levels: [default]
+  description: Run Chronos-Bolt alongside for comparison (phase 2).
+
+forecast_stale_after_runs:
+  type: integer
+  default: 4
+  levels: [default]
+  description: Missed runs before the forecast counts as stale.
+
+forecast_start_offset_s:
+  type: integer
+  default: 120
+  levels: [default]
+  unit: s
+  rules: { at_least: ingest_grace_period_s }
+  description: Seconds after the issue time at which a forecast run starts.
+
+forecast_timeout_s:
+  type: integer
+  default: 300
+  levels: [default]
+  unit: s
+  description: Hard time limit for one forecast run (machine time, DD117).
+
+nwp_max_age_h:
+  type: integer
+  default: 6
+  levels: [default]
+  unit: h
+  description: An older Open-Meteo fetch makes the run use the fallback base models.
+
+gap_interpolate_max_h:
+  type: integer
+  default: 3
+  levels: [default]
+  unit: h
+  description: Longest gap that is interpolated; longer gaps use Open-Meteo pseudo-observations.
+
+kit_skip_no_data_h:
+  type: integer
+  default: 24
+  levels: [default]
+  unit: h
+  description: Hours without valid data before a kit is skipped in a forecast run.
+
+# --- 4.3.6 Hazard thresholds: high wind (gust, Beaufort) ---------------------------------------
+
+wind_yellow_kmh:
+  type: number
+  default: 39
+  levels: [default, site, kit]
+  unit: km/h
+  rules: { min: 10, max: 200, order: wind_levels }
+  description: Gust at or above which the level is Yellow (Beaufort 6).
+
+wind_orange_kmh:
+  type: number
+  default: 50
+  levels: [default, site, kit]
+  unit: km/h
+  rules: { min: 10, max: 200, order: wind_levels }
+  description: Gust at or above which the level is Orange (Beaufort 7).
+
+wind_red_kmh:
+  type: number
+  default: 62
+  levels: [default, site, kit]
+  unit: km/h
+  rules: { min: 10, max: 200, order: wind_levels }
+  description: Gust at or above which the level is Red (Beaufort 8).
+
+squall_rise_kmh:
+  type: number
+  default: 30
+  levels: [default, site, kit]
+  unit: km/h
+  description: Rise of the 1-minute mean wind over the baseline that starts a squall (D31, DD100).
+
+squall_min_wind_kmh:
+  type: number
+  default: 40
+  levels: [default, site, kit]
+  unit: km/h
+  description: 1-minute mean wind a squall must reach.
+
+squall_sustain_s:
+  type: integer
+  default: 60
+  levels: [default, site]
+  unit: s
+  description: Seconds the 1-minute mean wind must stay at or above squall_min_wind_kmh.
+
+squall_baseline_min:
+  type: integer
+  default: 10
+  levels: [default]
+  unit: min
+  description: Baseline window; the baseline is the mean of wind_avg_kmh over it.
+
+squall_level:
+  type: string
+  default: orange
+  levels: [default, site, kit]
+  rules: { allowed: [yellow, orange, red] }
+  description: Level of a Live alert raised by a squall.
+
+squall_precursor_pressure_hpa:
+  type: number
+  default: 1.0
+  levels: [default, site]
+  unit: hPa
+  description: Pressure rise within the precursor window that counts as a squall precursor.
+
+squall_precursor_temp_drop_c:
+  type: number
+  default: 3
+  levels: [default, site]
+  unit: "°C"
+  description: Temperature drop within the precursor window.
+
+squall_precursor_rh_rise_pct:
+  type: number
+  default: 10
+  levels: [default, site]
+  unit: "%"
+  description: Humidity rise within the precursor window.
+
+squall_precursor_window_min:
+  type: integer
+  default: 15
+  levels: [default]
+  unit: min
+  description: Window in which the precursor changes are measured.
+
+# --- 4.3.6 Hazard thresholds: heavy rainfall ---------------------------------------------------
+
+rain_yellow_24h_mm:
+  type: number
+  default: 64.5
+  levels: [default, site, kit]
+  unit: mm
+  rules: { order: rain_levels }
+  description: Rain in 24 h at or above which the level is Yellow ("heavy").
+
+rain_orange_24h_mm:
+  type: number
+  default: 115.6
+  levels: [default, site, kit]
+  unit: mm
+  rules: { order: rain_levels }
+  description: Rain in 24 h at or above which the level is Orange ("very heavy").
+
+rain_red_24h_mm:
+  type: number
+  default: 204.5
+  levels: [default, site, kit]
+  unit: mm
+  rules: { order: rain_levels }
+  description: Rain in 24 h at or above which the level is Red ("extremely heavy").
+
+rain_intensity_1h_mm:
+  type: number
+  default: 30
+  computed_from: onboarding.rain_1h_wet_percentile   # max(floor, wet-hour percentile), DD104
+  levels: [default, site, kit]
+  unit: mm
+  rules: { min: 5, max: 200 }
+  description: Hourly rain that raises the intensity alert.
+
+rain_intensity_level:
+  type: string
+  default: orange
+  levels: [default, site, kit]
+  rules: { allowed: [yellow, orange, red] }
+  description: Level of the rain-intensity alert.
+
+# --- 4.3.6 Hazard thresholds: heatwave (region defaults) ---------------------------------------
+
+heat_min_tmax_c:
+  type: number
+  region_defaults: { plains: 40, coastal: 37, hilly: 30 }
+  levels: [default, site, kit]
+  unit: "°C"
+  rules: { min: 20, max: 50 }
+  description: Daily maximum needed before the departure from normal counts.
+
+heat_departure_c:
+  type: number
+  region_defaults: { plains: 4.5, coastal: 4.5, hilly: 4.5 }
+  levels: [default, site, kit]
+  unit: "°C"
+  rules: { order: heat_departure }
+  description: Departure above normal from which the day is a heatwave (Orange).
+
+heat_severe_departure_c:
+  type: number
+  region_defaults: { plains: 6.4, coastal: 6.4, hilly: 6.4 }
+  levels: [default, site, kit]
+  unit: "°C"
+  rules: { order: heat_departure }
+  description: Departure above normal greater than this makes a severe heatwave (Red).
+
+heat_absolute_c:
+  type: number
+  region_defaults: { plains: 45, coastal: 45, hilly: 45 }
+  levels: [default, site, kit]
+  unit: "°C"
+  rules: { order: heat_absolute }
+  description: Actual maximum from which the day is a heatwave regardless of the normal.
+
+heat_severe_absolute_c:
+  type: number
+  region_defaults: { plains: 47, coastal: 47, hilly: 47 }
+  levels: [default, site, kit]
+  unit: "°C"
+  rules: { order: heat_absolute }
+  description: Actual maximum from which the day is a severe heatwave.
+
+heat_index_caution_c:
+  type: number
+  region_defaults: { plains: 32, coastal: 32, hilly: 32 }
+  levels: [default, site]
+  unit: "°C"
+  rules: { order: heat_index }
+  description: Heat index from which heat-stress advice is shown (not an alert).
+
+heat_index_danger_c:
+  type: number
+  region_defaults: { plains: 41, coastal: 41, hilly: 41 }
+  levels: [default, site]
+  unit: "°C"
+  rules: { order: heat_index }
+  description: Heat index from which the heat-stress advice says danger.
+
+# --- 4.3.7 Alert behaviour ---------------------------------------------------------------------
+
+alert_watch_on_prob:
+  type: number
+  default: 0.30
+  levels: [default, site]
+  rules: { min: 0, max: 1, order: probabilities }
+  description: Probability at or above which a Watch is created (DD39).
+
+alert_watch_off_prob:
+  type: number
+  default: 0.20
+  levels: [default, site]
+  rules: { min: 0, max: 1, order: probabilities }
+  description: Probability below which a Watch is cancelled.
+
+alert_warning_on_prob:
+  type: number
+  default: 0.60
+  levels: [default, site]
+  rules: { min: 0, max: 1, order: probabilities }
+  description: Probability above which a Watch is upgraded to a Warning.
+
+alert_warning_off_prob:
+  type: number
+  default: 0.45
+  levels: [default, site]
+  rules: { min: 0, max: 1, order: probabilities }
+  description: Probability below which a Warning is left (AL-10).
+
+alert_downgrade_runs:
+  type: integer
+  default: 3
+  levels: [default, site]
+  rules: { min: 2, max: 3 }
+  description: Consecutive lower runs before an alert is downgraded (AL-09).
+
+alert_far_event_h:
+  type: integer
+  default: 48
+  levels: [default, site]
+  unit: h
+  description: Events starting later than this need agreement of several runs (AL-11).
+
+alert_far_agreement_runs:
+  type: integer
+  default: 2
+  levels: [default, site]
+  rules: { min: 1, max: 4 }
+  description: Runs that must agree before a far event raises an alert.
+
+alert_window_shift_notify_h:
+  type: integer
+  default: 3
+  levels: [default, site]
+  unit: h
+  rules: { min: 1, max: 24 }
+  description: A window start moving more than this (or to another local day) sends an updated email (DD101).
+
+live_min_duration_wind_min:
+  type: integer
+  default: 10
+  levels: [default, site, kit]
+  unit: min
+  description: Minutes a wind level must hold before a Live alert (AL-04); squalls use squall_sustain_s.
+
+live_min_duration_heat_min:
+  type: integer
+  default: 30
+  levels: [default, site, kit]
+  unit: min
+  description: Minutes a heat level must hold before a Live alert.
+
+live_min_duration_rain_min:
+  type: integer
+  default: 0
+  levels: [default, site, kit]
+  unit: min
+  description: Minutes a rain level must hold before a Live alert (accumulations are already sums).
+
+cleardown_wind_min:
+  type: integer
+  default: 30
+  levels: [default, site, kit]
+  unit: min
+  description: Minutes below the level before a Live wind alert is downgraded or cleared (AL-05).
+
+cleardown_rain_min:
+  type: integer
+  default: 60
+  levels: [default, site, kit]
+  unit: min
+  description: Minutes below the level before a Live rain alert is downgraded or cleared.
+
+notify_cooldown_min:
+  type: integer
+  default: 60
+  levels: [default, site]
+  unit: min
+  description: Minutes between repeated emails for the same alert and recipient (AL-06); escalations are never delayed.
+
+live_max_age_min:
+  type: integer
+  default: 15
+  levels: [default]
+  unit: min
+  description: Older (late) readings cannot open or upgrade Live alerts.
+
+live_offline_hold_min:
+  type: integer
+  default: 60
+  levels: [default, site]
+  unit: min
+  description: Minutes without data before a per-zone Live alert is cleared ("no data").
+
+live_takeover_hold_h:
+  type: integer
+  default: 6
+  levels: [default, site]
+  unit: h
+  description: While a Live alert is open, no same-colour forecast alert for episodes starting sooner (D29, DD114).
+
+suppression_max_h:
+  type: integer
+  default: 24
+  levels: [default, site]
+  unit: h
+  description: Longest suppression an operator can set (AL-15).
+
+combine_heatwave:
+  type: string
+  default: median
+  levels: [default, site]
+  rules: { allowed: [median, worst, majority, two_kit_agreement] }
+  description: How the kits' heatwave levels combine into the site level (AL-14).
+
+combine_heavy_rain:
+  type: string
+  default: worst
+  levels: [default, site]
+  rules: { allowed: [median, worst, majority, two_kit_agreement] }
+  description: How the kits' heavy-rain levels combine into the site level.
+
+combine_high_wind:
+  type: string
+  default: worst
+  levels: [default, site]
+  rules: { allowed: [median, worst, majority, two_kit_agreement] }
+  description: How the kits' wind levels combine into the site level; wind also keeps per-zone alerts.
+
+advice_heatwave:
+  type: string
+  default: "Drink water often, stay in the shade and avoid hard outdoor work between 12:00 and 16:00."
+  levels: [default, site, kit]
+  rules: { max_length: 500 }
+  description: Advice text in heatwave alerts; zone-specific advice at kit level (AL-17).
+
+advice_heavy_rain:
+  type: string
+  default: "Avoid low-lying and flooded areas, keep drains clear and do not walk or drive through water."
+  levels: [default, site, kit]
+  rules: { max_length: 500 }
+  description: Advice text in heavy-rain alerts.
+
+advice_high_wind:
+  type: string
+  default: "Stop outdoor activities, move everyone indoors and stay away from trees, hoardings and loose roofing."
+  levels: [default, site, kit]
+  rules: { max_length: 500 }
+  description: Advice text in high-wind alerts.
+
+# --- 4.3.8 Notifications -----------------------------------------------------------------------
+
+email_from_name:
+  type: string
+  default: Site Weather Alerts
+  levels: [default, site]
+  description: Display name of the sender; the address is SMTP_FROM in .env.
+
+email_max_attempts:
+  type: integer
+  default: 6
+  levels: [default]
+  rules: { min: 1, max: 20 }
+  description: Attempts before an email counts as failed (WEB-44).
+
+email_retry_base_s:
+  type: integer
+  default: 30
+  levels: [default]
+  unit: s
+  description: Base of the exponential backoff between email attempts.
+
+email_skip_superseded:
+  type: boolean
+  default: true
+  levels: [default]
+  description: Skip unsent emails replaced by a newer change of the same alert.
+
+notify_maintenance:
+  type: boolean
+  default: true
+  levels: [default, site]
+  description: Send maintenance notices to operators (DP-26).
+
+# --- 4.3.9 Security, limits and retention (default only, DD40) ---------------------------------
+
+session_hours:
+  type: integer
+  default: 8
+  levels: [default]
+  unit: h
+  description: Session lifetime (WEB-06).
+
+login_lockout_attempts:
+  type: integer
+  default: 5
+  levels: [default]
+  description: Failed logins before the account is locked (WEB-06).
+
+login_lockout_min:
+  type: integer
+  default: 15
+  levels: [default]
+  unit: min
+  description: Minutes an account stays locked.
+
+password_min_length:
+  type: integer
+  default: 10
+  levels: [default]
+  description: Minimum password length.
+
+invite_valid_h:
+  type: integer
+  default: 48
+  levels: [default]
+  unit: h
+  description: Validity of an invitation link (WEB-02).
+
+reset_valid_min:
+  type: integer
+  default: 60
+  levels: [default]
+  unit: min
+  description: Validity of a password-reset link.
+
+rate_user_per_min:
+  type: integer
+  default: 120
+  levels: [default]
+  description: Requests per minute per user (NFR-03).
+
+rate_login_per_ip_min:
+  type: integer
+  default: 10
+  levels: [default]
+  description: Login attempts per minute per IP address.
+
+rate_reset_per_ip_h:
+  type: integer
+  default: 5
+  levels: [default]
+  description: Password-reset requests per hour per IP address.
+
+command_wait_s:
+  type: integer
+  default: 3
+  levels: [default]
+  unit: s
+  description: How long the API waits for the alert engine to apply an operator command.
+
+retention_forecast_days:
+  type: integer
+  default: 400
+  levels: [default]
+  unit: days
+  description: Days forecast values and probabilities are kept.
+
+retention_derived_days:
+  type: integer
+  default: 180
+  levels: [default]
+  unit: days
+  description: Days derived features are kept (recomputable from clean readings).
+
+retention_qc_flag_days:
+  type: integer
+  default: 365
+  levels: [default]
+  unit: days
+  description: Days QC flags are kept.
+
+retention_rejected_days:
+  type: integer
+  default: 30
+  levels: [default]
+  unit: days
+  description: Days rejected messages are kept.

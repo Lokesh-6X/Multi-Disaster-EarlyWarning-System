@@ -1,0 +1,19 @@
+# Training environment (Kaggle Notebooks, Python 3.13, D40, DD128, DD129).
+# Same versions as backend/pyproject.toml, tested end to end on the laptop CPU in M0.6
+# (scripts/checks/tft_cpu_trial.py). Kaggle: pip install -r ml/requirements.txt, then
+# "Pin to original environment" in the notebook settings.
+# torch: Kaggle has 2.11.0+cu128 preinstalled (satisfies ==2.11.0); on the laptop install the CPU build
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+pytorch-lightning==2.6.6
+torchmetrics==1.9.0
+lightning-utilities==0.15.3
+darts==0.48.1
+lightgbm==4.7.0
+numpy==2.5.4
+# pandas 3.1.0 is blocked by Windows Smart App Control on the laptop (setup guide §1.1)
+pandas==2.3.3
+pyarrow==26.0.0
+scikit-learn==1.9.1
+scipy==1.18.1
+statsmodels==0.15.0

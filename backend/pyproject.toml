@@ -1,0 +1,51 @@
+# Package ews (design/01 §1.6): one package, one virtual environment, five processes.
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ews"
+version = "0.1.0"
+description = "Site Weather-Hazard Early-Warning System"
+requires-python = ">=3.13,<3.14"  # DD129: same minor version as the Kaggle training image
+# Exact versions tested on the laptop (M0.7); Smart App Control may block untested builds (setup guide §1.1)
+dependencies = [
+    # Web API and live updates (design/02)
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "websockets==17.3",
+    # Database: asyncpg for the processes (pool, NOTIFY/LISTEN), psycopg for Alembic migrations
+    "asyncpg==0.32.0",
+    "sqlalchemy==2.1.6",
+    "alembic==1.20.1",
+    "psycopg[binary]==3.3.6",
+    # MQTT, email, configuration, passwords (scheduling: ews.common.clock.every, DD130)
+    "paho-mqtt==2.1.0",
+    "jinja2==3.1.6",
+    "pyyaml==6.0.3",
+    "argon2-cffi==25.1.0",
+    "httpx==0.28.1",
+    # ML inference: same versions as ml/requirements.txt (M0.6). torch is installed first from the
+    # CPU index: pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+    "torch==2.11.0",
+    "pytorch-lightning==2.6.6",
+    "darts==0.48.1",
+    "lightgbm==4.7.0",
+    "numpy==2.5.4",
+    "pandas==2.3.3",  # 3.1.0 is blocked by Smart App Control on the laptop (setup guide §1.1)
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "pytest-asyncio==1.4.1", "hypothesis==6.170.13", "httpx==0.28.1"]
+
+[tool.setuptools.packages.find]
+include = ["ews*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs PostgreSQL (ews_test) or Mosquitto",
+    "slow: long demo-clock end-to-end runs (design/12 §12.2)",
+]

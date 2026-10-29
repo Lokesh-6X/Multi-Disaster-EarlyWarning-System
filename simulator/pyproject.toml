@@ -1,0 +1,18 @@
+# Standalone kit simulator (design/11). Never imports ews (DD7): only the MQTT contract connects them.
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simulator"
+version = "0.1.0"
+description = "Kit simulator for the Site Weather-Hazard Early-Warning System"
+requires-python = ">=3.13,<3.14"  # DD129
+dependencies = [
+    "paho-mqtt==2.1.0",
+    "pyyaml==6.0.3",
+    "httpx==0.28.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["simulator*"]
