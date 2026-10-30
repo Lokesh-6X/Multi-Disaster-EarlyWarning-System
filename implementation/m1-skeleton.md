@@ -5,40 +5,40 @@
 
 ---
 
-- [ ] **M1.1 Config resolver**
+- [x] **M1.1 Config resolver**
   - Do: `ews.common.config.resolve(key, kit)` with the order kit → site → onboarding → region default → default and its `source`; cache, reload hook.
   - Check: TST-10 resolution tests, including a `hypothesis` property test (most specific allowed level wins).
   - Ref: [design/04 §4.2](../design/04-configuration.md) · Needs: M0.11
 
-- [ ] **M1.2 Config validator and versioned saves**
+- [x] **M1.2 Config validator and versioned saves**
   - Do: the 7 validation steps with all problems reported together; cross-key rules checked on the effective values of **every** affected kit; save = insert version *n + 1* (unique key gives the conflict).
   - Check: TST-10 cases: `timezone` on a kit → `OVERRIDE_NOT_ALLOWED`; a site save that breaks a kit → `THRESHOLD_ORDER`; two saves on the same base version → one conflict.
   - Ref: [design/04 §4.4](../design/04-configuration.md), [design/03 §3.5.2](../design/03-database-schema.md) · Needs: M1.1
 
-- [ ] **M1.3 YAML import and `-Seed`**
+- [x] **M1.3 YAML import and `-Seed`**
   - Do: import of site, kits and recipients (atomic, same validator, dry run); `config/example-site.yaml` (ABC College, KIT-01) and `config/demo-site.yaml` (`site_id: demo`); `start.ps1 -Seed <file>` imports when no site exists.
   - Check: valid file → site + kit + recipients stored; one invalid kit → nothing stored.
-  - Ref: [design/04 §4.6](../design/04-configuration.md) · Needs: M1.2
+  - Ref: [design/04 §4.6](../design/04-configuration.md), DD132 · Needs: M1.2
 
-- [ ] **M1.4 Shared feature and label code (`ews.ml`)**
+- [x] **M1.4 Shared feature and label code (`ews.ml`)**
   - Do: `ews.ml.features` (heat index NOAA, end-labelled hourly series, rolling statistics) and `ews.ml.labels` (gust, rain 24 h per IMD rain day, rain burst with wet-hour p99 and 20 mm/h floor, heatwave with normal and region rules), `normals` (15-day smoothing). Pure functions, no database.
   - Check: golden-value tests (heat index table within 0.3 °C; labels on small hand-made series). The ML track imports this module from T2a on.
-  - Ref: [design/06 §6.4–6.6](../design/06-ml-training.md), [design/05 §5.5](../design/05-data-pipeline.md) · Needs: M0.7
+  - Ref: [design/06 §6.4–6.6](../design/06-ml-training.md), [design/05 §5.5](../design/05-data-pipeline.md), DD133 · Needs: M0.7
 
-- [ ] **M1.5 Users and preferences tables**
+- [x] **M1.5 Users and preferences tables**
   - Do: migration for `user_session`, `user_token`, `user_alert_preference` (+ hazard, type), `audit_entry`, `audit_change`; default preferences created with every user.
   - Check: creating a user creates its default preference rows.
-  - Ref: [design/03 §3.11](../design/03-database-schema.md) · Needs: M0.11
+  - Ref: [design/03 §3.11](../design/03-database-schema.md), DD134 · Needs: M0.11
 
-- [ ] **M1.6 Reading tables**
+- [x] **M1.6 Reading tables**
   - Do: migration for `kit_firmware`, `reading_raw`, `reading_clean` (`kit_config_version_id`, `site_config_version_id`), `reading_derived`, `reading_qc_flag`, `kit_status_event`, `rejected_message`; hypertables; `kit_outage` view.
   - Check: `alembic upgrade head` then `downgrade -1` and `upgrade` again work on `ews_test`.
   - Ref: [design/03 §3.6](../design/03-database-schema.md), DD123 · Needs: M0.11
 
-- [ ] **M1.7 Simulator: one kit, normal mode**
+- [x] **M1.7 Simulator: one kit, normal mode**
   - Do: `simulator/kit.py` (MQTT, last will `offline` retained, `online` on connect, seq, uptime, rssi); `contract.schema.json`; `normal` and `replay` sources at 1×; every message checked against the schema; the D39 guard (scenarios and faults only with `clock.mode: demo`).
   - Check: `python -m simulator run --replay …` publishes valid messages; `--scenario squall` with real clock is refused.
-  - Ref: [design/11 §11.1–11.2, §11.7](../design/11-simulator.md), DD125 · Needs: M0.4
+  - Ref: [design/11 §11.1–11.2, §11.7](../design/11-simulator.md), DD125, DD135 · Needs: M0.4
 
 - [ ] **M1.8 Ingest: topic, contract, duplicates**
   - Do: subscribe QoS 1 with persistent session; topic checks; strict payload validation (exactly the contract fields, types, ranges, 4 KB, timestamp window); duplicates (identical dropped, conflicting rejected); `rejected_message` + `message.rejected`.

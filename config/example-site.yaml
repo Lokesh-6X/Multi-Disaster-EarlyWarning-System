@@ -1,0 +1,29 @@
+# Example site for the first start (design/04 §4.6, DD132):
+#   scripts\start.ps1 -Seed config\example-site.yaml
+# Imported only when no site exists yet. Keys and their rules: config/defaults.yaml.
+# Credentials never go here (MQTT and SMTP stay in .env).
+
+site:
+  site_id: abc                       # MQTT topics sites/abc/…; cannot change later
+  site_name: "ABC College"
+  lat: 13.08
+  lon: 80.27
+  elevation_m: 6
+  timezone: Asia/Kolkata
+  region_type: coastal
+
+kits:
+  - kit_id: KIT-01                   # same as simulator/config.yaml and the kit's MQTT user
+    kit_zone: "Main Block Rooftop"
+    lat: 13.081
+    lon: 80.271
+    elevation_m: 30                  # sensor height above sea level (ground + building + mast)
+    mount_height_m: 3
+    exposure: rooftop
+    sampling_interval_s: 60
+
+recipients:                          # alert e-mails (WEB-41); .example addresses never deliver
+  - email: site-alerts@abc-college.example
+    label: "Site mailing list"
+    min_level: yellow
+    hazards: [heatwave, heavy_rain, high_wind]

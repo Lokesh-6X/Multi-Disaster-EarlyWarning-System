@@ -119,7 +119,7 @@ Each process writes **one JSON object per line** to `logs/<process>.log` (machin
 
 | Process | Events |
 |---|---|
-| all | `process.started` (version, config summary, clock mode), `process.stopping`, `heartbeat.failed` (WARNING), `db.reconnect` (WARNING) |
+| all | `process.started` (version, config summary, clock mode), `process.stopping`, `heartbeat.failed` (WARNING), `db.reconnect` (WARNING), `config.reloaded` (site version, kit count), `config.reload_failed` (WARNING; the last loaded configuration stays in use), `config.imported` (dry run, site / kit / recipient changes; also from `start.ps1 -Seed`) |
 | `api` | `http.request` (method, path, status, duration; DEBUG for `GET`, INFO for writes), `auth.login` / `auth.login_failed` (WARNING) / `auth.locked` (WARNING), `ws.connected` / `ws.closed` (with close code), `rate_limited` (WARNING) |
 | `ingest` | `mqtt.connected` / `mqtt.disconnected` (WARNING), `reading.stored` (DEBUG; one INFO summary per kit per 15 min), `message.rejected` (WARNING), `duplicate.conflicting` (WARNING), `kit.status_changed`, `qc.flag` (WARNING for faulty) |
 | `worker` | `forecast.run_started`, `forecast.run_completed`, `forecast.run_failed` (ERROR), `forecast.run_skipped` (WARNING), `model.fallback_used` (WARNING), `model.load_failed` (ERROR), `openmeteo.fetched` / `openmeteo.failed` (WARNING), `onboarding.step`, `job.completed` |

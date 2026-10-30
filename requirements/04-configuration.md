@@ -117,7 +117,8 @@ kits:
     lat: 13.079
     lon: 80.269
     exposure: open_ground
-    wind_orange_kmh: 35            # local risk: lower thresholds …
+    wind_yellow_kmh: 28            # local risk: lower thresholds (yellow < orange < red) …
+    wind_orange_kmh: 35
     wind_red_kmh: 45
     advice_high_wind: "Stop outdoor games and move everyone indoors."   # … and zone advice
 

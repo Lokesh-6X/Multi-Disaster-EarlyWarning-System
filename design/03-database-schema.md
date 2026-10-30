@@ -911,6 +911,20 @@ CREATE TABLE audit_change (                -- one row per changed field (1NF)
 );
 ```
 
+**Default preferences (DD134):** every new `app_user` gets its preference rows from an `AFTER INSERT` trigger, whichever path creates it (first-run setup, invite, tests): `enabled`, `min_level = 'yellow'`, `maintenance_notices` on, all three hazards and all three alert types. The user narrows them in the profile (`PUT /me/email-preferences`).
+
+```sql
+CREATE FUNCTION user_default_preferences() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO user_alert_preference (user_id) VALUES (NEW.id);
+  INSERT INTO user_alert_hazard SELECT NEW.id, h FROM unnest(enum_range(NULL::hazard)) h;
+  INSERT INTO user_alert_type   SELECT NEW.id, t FROM unnest(enum_range(NULL::alert_type)) t;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER app_user_default_preferences AFTER INSERT ON app_user
+  FOR EACH ROW EXECUTE FUNCTION user_default_preferences();
+```
+
 Login rate limiting per IP (NFR-03) is kept in memory in `api`; losing it on restart is harmless. Account lockout is stored (`failed_logins`, `locked_until`).
 
 ## 3.12 Process bookkeeping

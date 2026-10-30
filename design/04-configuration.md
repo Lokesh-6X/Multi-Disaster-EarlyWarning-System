@@ -257,7 +257,7 @@ Every save (UI, API, YAML import) runs the same validator, in this order; all pr
 | 6 | Unique `kit_id` (table), unique `kit_zone` among enabled kits | `DUPLICATE_KIT_ID`, `DUPLICATE_ZONE` |
 | 7 | **Cross-key rules on the effective values of every affected kit** (below) | `THRESHOLD_ORDER`, `RULE_VIOLATION` |
 
-Step 7 is why a **site** save is validated against **every kit**: a site that sets `wind_yellow_kmh: 55` breaks a kit that has `wind_orange_kmh: 45`, even though the site record alone looks fine.
+Step 7 is why a **site** save is validated against **every enabled kit** (DD131): a site that sets `wind_yellow_kmh: 46` breaks a kit that has `wind_orange_kmh: 45`, even though the site record alone looks fine (46 < 50 < 62 at the site). The validator is `ews.common.config_validation.validate`; a save is stored by `ews.common.config.save_version` (03 §3.5.2).
 
 Cross-key rules:
 
@@ -315,6 +315,7 @@ kits:
     lat: 13.079
     lon: 80.269
     exposure: open_ground
+    wind_yellow_kmh: 28
     wind_orange_kmh: 35
     wind_red_kmh: 45
     advice_high_wind: "Stop outdoor games and move everyone indoors."
@@ -336,11 +337,19 @@ recipients:
 | Endpoints | `POST /config/import` (admin, YAML body, `?dry_run=true` to validate only, `reason` required) and `GET /config/export` (`?effective=true` adds resolved values with sources) ([02 §2.6.8](02-api.md)) |
 | Validation | Exactly the same validator as UI saves (§4.4), run on the whole file before anything is stored |
 | Atomic | All or nothing in one transaction; each changed scope gets a new version; unchanged scopes are not touched |
+| Sections | `site`, `kits`, `recipients` and the flag `replace_recipients`; each is optional except `site` when no site exists yet. Any other top-level name → `UNKNOWN_KEY` |
+| Identifiers | `site_id` and `kit_id` identify the row and are not keys. `site_id` is required when the site is created; when the site exists, a different `site_id` → `SITE_ID_IMMUTABLE` (a file for another installation is never applied) |
+| Full set per level | The `site` mapping (without `site_id`) and each kit's mapping (without `kit_id`) are the **full** set of values for that level, exactly like a UI save: a key left out falls back to the next level. A scope whose values equal its current version is unchanged |
 | Missing kits | Kits not in the file are left unchanged (never deleted; retire with `kit_enabled: false`) |
-| Recipients | Matched by e-mail; listed ones are created or updated, unlisted ones are left unchanged unless `replace_recipients: true` |
-| First run | If no site exists, import creates it (`site_id` from the file) and starts onboarding; `start.ps1 -Seed config/example-site.yaml` calls the same import for the demo |
+| Recipients | Matched by e-mail (case-insensitive); listed ones are created or updated, unlisted ones are left unchanged unless `replace_recipients: true`, which **deactivates** them (`active = false`; never deleted, sent emails refer to them). Fields: `email` (required), `label` (required, 1–100 characters), `min_level` (default `yellow`), `hazards` (default all three), `zones` (kit IDs from the file or the database; default none = all zones), `active` (default `true`). A changed recipient gets `version + 1` |
+| Problems | All problems together, as for a UI save; `field` locates each one in the file: `site.<key>`, `kits.<kit_id>.<key>`, `recipients[<n>].<field>` (n from 0). A file that is not YAML or not a mapping is rejected as a whole (`400 BAD_REQUEST`) |
+| Dry run | Validates and reports what would be created, updated or left unchanged; stores nothing |
+| First run | If no site exists, import creates it (`site_id` from the file) and starts onboarding; `start.ps1 -Seed config/example-site.yaml` calls the same import (`python -m ews.common.config_import <file> --if-no-site`), and skips it when a site already exists |
+| Event | One `config.changed` in the import's transaction when anything changed (delivered on commit) |
 | Audit | One audit entry per changed scope, with the import's `reason` |
 | Secrets | The file never contains credentials (MQTT and SMTP stay in `.env`) |
+
+The import is `ews.common.config_import.import_file` (DD132); `-Seed` uses it before the API exists. Audit entries and the onboarding request are added when their parts exist (audit with the config API, M3.2; `onboarding.requested` with the onboarding job, M3.5); until then the version `reason` records the import. Files shipped: `config/example-site.yaml` (ABC College, `site_id: abc`, KIT-01) and `config/demo-site.yaml` (`site_id: demo`, KIT-01 – KIT-03, the demo database, [11 §11.3.1](11-simulator.md)).
 
 ## 4.7 `defaults.yaml` shape
 

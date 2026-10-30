@@ -1,0 +1,49 @@
+# The demo database's site (design/11 §11.3.1, design/04 §4.6). Its own site_id, so in demo mode
+# ingest reads only sites/demo/… and never a real kit publishing to sites/abc/….
+#   scripts\start.ps1 -Demo -Seed config\demo-site.yaml
+# Three kits, so the neighbour check (qc_neighbour_min_kits) and the combination rules have work to do.
+
+site:
+  site_id: demo
+  site_name: "Demo Site"
+  lat: 13.08
+  lon: 80.27
+  elevation_m: 6
+  timezone: Asia/Kolkata
+  region_type: coastal
+  wind_red_kmh: 58                   # site override of a default threshold
+
+kits:
+  - kit_id: KIT-01
+    kit_zone: "Main Block Rooftop"
+    lat: 13.081
+    lon: 80.271
+    elevation_m: 30
+    mount_height_m: 3
+    exposure: rooftop
+    cal_temp_offset_c: -0.5          # from side-by-side calibration
+  - kit_id: KIT-02
+    kit_zone: "Sports Ground"
+    lat: 13.079
+    lon: 80.269
+    exposure: open_ground
+    wind_yellow_kmh: 28              # local risk: lower thresholds (keeping yellow < orange < red) …
+    wind_orange_kmh: 35
+    wind_red_kmh: 45
+    advice_high_wind: "Stop outdoor games and move everyone indoors."   # … and zone advice
+  - kit_id: KIT-03
+    kit_zone: "Library Lawn"
+    lat: 13.0805
+    lon: 80.2685
+    exposure: under_trees
+
+recipients:                          # .example addresses never deliver; the demo sends to Mailpit
+  - email: all@demo-site.example
+    label: "Site mailing list"
+    min_level: yellow
+    hazards: [heatwave, heavy_rain, high_wind]
+  - email: sports@demo-site.example
+    label: "Sports department"
+    min_level: yellow
+    hazards: [high_wind]
+    zones: [KIT-02]

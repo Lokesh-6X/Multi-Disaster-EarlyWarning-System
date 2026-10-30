@@ -106,7 +106,7 @@ Only `alerts` changes alert level and status, starts or stops timers, and decide
 | `alert.command` | `api` | `alerts` | Operator command waiting |
 | `alert.changed` | `alerts` | `api` | Alert created / upgraded / downgraded / cancelled / cleared / suppressed |
 | `alert.acknowledged` | `api` | `api` | Broadcast acknowledgement to all clients |
-| `config.changed` | `api` | `ingest`, `worker`, `alerts`, `api` | New config version; processes reload resolved config |
+| `config.changed` | `api`, YAML import ([04 §4.6](04-configuration.md)) | `ingest`, `worker`, `alerts`, `api` | New config version; processes reload resolved config |
 | `email.queued` | `alerts`, `api` | `mailer` | Outbox has new rows |
 | `clock.tick` | `ingest` | all | Demo mode only: simulated time from `sim/clock` ([11 §11.3](11-simulator.md)) |
 
@@ -242,7 +242,8 @@ Disaster Predection/
 ├── models/                       model files + registry.json (files git-ignored, registry committed)
 ├── config/
 │   ├── defaults.yaml             system defaults (the rulebook shipped with the software)
-│   ├── example-site.yaml         example site and kits for the demo
+│   ├── example-site.yaml         example site (ABC College, KIT-01) for -Seed
+│   ├── demo-site.yaml            the demo database's site (site_id demo)
 │   └── mosquitto/                mosquitto.conf, ACL file (password file git-ignored)
 ├── scripts/                      start.ps1, stop.ps1, check-setup.ps1, run-process.ps1, logs.ps1, backup.ps1, restore.ps1 (14)
 ├── backups/                      database dumps (git-ignored, 14 §14.3)

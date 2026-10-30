@@ -37,7 +37,7 @@ clock: { mode: demo, speed: 60, start: "2024-05-25T00:00:00Z" }   # or mode: rea
 seed: 42
 kits:
   - kit_id: KIT-01
-    user_env: SIM_KIT01            # username/password from simulator/.env
+    # MQTT user = kit_id; password from simulator/.env MQTT_PASSWORD_KIT_01 (kit_id upper-cased, '-' → '_')
     lat: 13.081
     lon: 80.271
     elevation_m: 30
@@ -86,6 +86,21 @@ Practical limit: forecast inference takes 10–20 s ([07 §7.8](07-forecast-work
 
 ## 11.4 Weather sources
 
+### 11.4.0 Normal (stand-in kit, DD135)
+
+`--source normal` (the default) is synthetic **dry, calm** weather for a stand-in kit before the hardware exists and for Scenario 1 timing. It needs no download and is allowed on the real clock. With the seed fixed, values are repeatable.
+
+| Variable | Model (site local time) |
+|---|---|
+| `temp_c` | 30 + 4 · cos(2π (hour − 15) / 24): minimum 26 °C at 03:00, maximum 34 °C at 15:00 |
+| `rh_pct` | 65 − 15 · cos(2π (hour − 15) / 24): 50–80 % (lowest when hottest) |
+| `pressure_msl_hpa` | 1008 + 1.0 · cos(4π (hour − 10) / 24) (semi-diurnal tide, highs at 10:00 and 22:00) |
+| `wind_avg_kmh` | 8 + AR(1) turbulence (φ = 0.9, sd 1.5), never below 0 |
+| Gust | `wind_avg_kmh` × gust factor (random walk in 1.3–1.7) |
+| Rain | none (0 tips) |
+
+The sensor model of §11.4.1 turns these into BME280/DHT11 readings; station pressure is the inverse of the reduction in [05 §5.3](05-data-pipeline.md) at the kit's `elevation_m`, so the server gets the true sea-level value back.
+
 ### 11.4.1 Replay (TST-01, DD84)
 
 | Item | Rule |
@@ -93,7 +108,7 @@ Practical limit: forecast inference takes 10–20 s ([07 §7.8](07-forecast-work
 | Sources | (a) Open-Meteo Archive (ERA5) for a location and period, e.g. Delhi 2024-05-25 – 31 heatwave; (b) a CSV export of real kit data (`ts, temp_c, rh_pct, …`) |
 | Hourly → 1-minute | Temperature, humidity, pressure: cubic interpolation; wind average: interpolation plus AR(1) turbulence; **gust** = average × gust factor (1.3–1.7, random walk) with occasional bursts; **rain**: each hour's amount converted to tips and placed with a Poisson process inside the hour |
 | Sensors | BME280 values = truth + small noise, rounded to 0.01; DHT11 = truth + noise ±1 °C/±3 %, rounded to integers; optional calibration bias so offsets in config can be tested |
-| Time | Demo clock: sim time = the historical dates. Real clock: shifted so the replay starts now, 1× only |
+| Time | Demo clock: sim time = the historical dates. Real clock: shifted so the replay starts now, 1× only; the simulator stops at the end of the replay |
 | Speed | 1×–120× in demo mode; `pause`, `resume`, `speed` at runtime |
 
 ### 11.4.2 Scenarios (TST-02, DD83)
@@ -169,7 +184,8 @@ This exercises the neighbour check (≥ 3 kits), the median/worst combination ru
 | Topics | `sites/{site_id}/kits/{kit_id}/readings` every `sampling_interval_s` of simulated time; `…/status` `online` retained on connect; last will `offline` retained |
 | QoS | 1 |
 | Payload | Built from the sensor model, rounded to sensor resolution; `seq` increments per message; `uptime_s` from simulated boot time; `rssi_dbm` −55 to −80 with slow variation |
-| Validation | Every outgoing normal message is checked against `contract.schema.json`; a mismatch stops the simulator (a bug in the simulator, not a test) |
+| Validation | Every outgoing normal message is checked against `contract.schema.json`; a mismatch stops the simulator (a bug in the simulator, not a test). The check is the simulator's own small validator for the keywords the contract uses (`type`, `required`, `additionalProperties`, `minimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `pattern`), not the `jsonschema` package (DD135) |
+| Timestamps | `ts` on multiples of `sampling_interval_s` (e.g. every whole minute), UTC with `Z` |
 | Demo clock | When `clock.mode = demo`, the simulator also publishes `sim/clock` (retained) every real second; the broker ACL allows only the `simulator` user to write it |
 
 ## 11.8 Running

@@ -1,25 +1,35 @@
-"""Settings catalogue (design/04 §4.3, §4.7) and its sync into the database (DD110).
+"""Settings catalogue (design/04 §4.3, §4.7), its sync into the database (DD110) and the resolver (04 §4.2).
 
     python -m ews.common.config sync      # start.ps1 runs this after `alembic upgrade head`
 
 `config/defaults.yaml` is the source; `config_key` and `config_key_region_default` mirror it so the API can
 serve the schema and foreign keys reject unknown keys. A key removed from the file is marked `deprecated`,
-never deleted (old config versions reference it). The resolver (04 §4.2) is added here in M3.
+never deleted (old config versions reference it).
+
+The resolver is the only implementation of kit → site → onboarding → region default → default (DD38):
+
+    cache = ConfigCache(pool)
+    await cache.load()
+    cache.resolve("wind_orange_kmh", "KIT-02")     # Resolved(value=35, source='kit')
+    asyncio.create_task(cache.follow(dsn))         # reload on config.changed (01 §1.3.3)
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable, Mapping
 
 import asyncpg
 import yaml
 
+from ews.common import events
+from ews.common.logging import get_logger
 from ews.common.settings import REPO_ROOT
 
 DEFAULTS_FILE = REPO_ROOT / "config" / "defaults.yaml"
@@ -118,6 +128,193 @@ def parse_catalogue(data: dict[str, Any]) -> dict[str, KeyMeta]:
 
 def load_catalogue(path: Path | str = DEFAULTS_FILE) -> dict[str, KeyMeta]:
     return parse_catalogue(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+
+
+# --- resolution (04 §4.2, DD38) ----------------------------------------------------------------
+
+SOURCES = ("kit", "site", "onboarding", "default")
+log = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class Resolved:
+    value: Any                       # None only for a key with no default that nobody has set
+    source: str                      # one of SOURCES (CFG-06)
+    region_type: str | None = None   # set when a region default was used
+
+
+@dataclass(frozen=True)
+class ScopeValues:
+    """The values set at one level in its current version."""
+    values: Mapping[str, Any] = field(default_factory=dict)
+    version_id: int | None = None    # config_version.id, stored with every clean reading (DD123)
+    version: int | None = None       # version number within the scope (CFG-04)
+
+
+@dataclass(frozen=True)
+class ConfigSnapshot:
+    """Everything needed to resolve any key for the site or any kit; pure, no database."""
+    catalogue: Mapping[str, KeyMeta] = field(repr=False)
+    site: ScopeValues = field(default_factory=ScopeValues)
+    kits: Mapping[str, ScopeValues] = field(default_factory=dict)
+    onboarding: Mapping[str, Any] = field(default_factory=dict)   # computed_from name → value (M3.1)
+
+    @property
+    def region_type(self) -> str | None:
+        return self.site.values.get("region_type")
+
+    def resolve(self, key: str, kit: str | None = None) -> Resolved:
+        meta = self.catalogue.get(key)
+        if meta is None:
+            raise KeyError(f"unknown config key {key!r}")
+        if kit is not None:
+            if kit not in self.kits:
+                raise KeyError(f"unknown kit {kit!r}")
+            kit_values = self.kits[kit].values
+            if meta.kit_allowed and key in kit_values:
+                return Resolved(kit_values[key], "kit")
+        if meta.site_allowed and key in self.site.values:
+            return Resolved(self.site.values[key], "site")
+        if meta.computed_from and meta.computed_from in self.onboarding:
+            return Resolved(self.onboarding[meta.computed_from], "onboarding")
+        region = self.region_type
+        if meta.region_defaults and region in meta.region_defaults:
+            return Resolved(meta.region_defaults[region], "default", region_type=region)
+        return Resolved(meta.default, "default")
+
+    def value(self, key: str, kit: str | None = None) -> Any:
+        return self.resolve(key, kit).value
+
+    def effective(self, kit: str | None = None) -> dict[str, Resolved]:
+        """Every key for the site (kit=None) or one kit, as `GET /config/effective` shows it."""
+        return {key: self.resolve(key, kit) for key in self.catalogue}
+
+
+async def load_snapshot(conn: asyncpg.Connection | asyncpg.Pool,
+                        catalogue: Mapping[str, KeyMeta] | None = None) -> ConfigSnapshot:
+    """Current site and kit versions from the database (03 §3.5.2)."""
+    rows = await conn.fetch(
+        "SELECT c.scope::text AS scope, k.kit_id, c.id, c.version, v.key, v.value::text AS value "
+        "FROM config_current c LEFT JOIN kit k ON k.kit_no = c.kit_no "
+        "LEFT JOIN config_value v ON v.version_id = c.id")
+    values: dict[str | None, dict[str, Any]] = {r["kit_id"]: {} for r in await conn.fetch("SELECT kit_id FROM kit")}
+    versions: dict[str | None, tuple[int, int]] = {}
+    for r in rows:
+        scope = r["kit_id"] if r["scope"] == "kit" else None
+        versions[scope] = (r["id"], r["version"])
+        values.setdefault(scope, {})
+        if r["key"] is not None:
+            values[scope][r["key"]] = json.loads(r["value"])
+
+    def scope_values(scope: str | None) -> ScopeValues:
+        version_id, version = versions.get(scope, (None, None))
+        return ScopeValues(values.get(scope, {}), version_id, version)
+
+    return ConfigSnapshot(
+        catalogue=catalogue if catalogue is not None else load_catalogue(),
+        site=scope_values(None),
+        kits={kit: scope_values(kit) for kit in values if kit is not None})
+
+
+class VersionConflict(Exception):
+    """The save was based on an outdated version (CFG-04): API `409 CONFIG_VERSION_CONFLICT`."""
+
+    def __init__(self, scope: str, kit_id: str | None, base_version: int, current_version: int | None):
+        self.current_version = current_version
+        where = kit_id or "site"
+        super().__init__(f"{where} config: saved on version {base_version}, current is {current_version}")
+
+
+async def save_version(conn: asyncpg.Connection, *, scope: str, values: Mapping[str, Any], base_version: int,
+                       created_at: Any, kit_id: str | None = None, created_by: Any = None,
+                       reason: str | None = None) -> int:
+    """Store `values` (validated, the full set for the level) as version base_version + 1; returns its id.
+
+    base_version 0 = the first version of the scope. No locks: if someone else already saved
+    base_version + 1, the unique key fails and this raises VersionConflict (03 §3.5.2).
+    The kit row must exist. Run inside the caller's transaction when several scopes are saved together.
+    """
+    kit_no = None
+    if scope == "kit":
+        kit_no = await conn.fetchval("SELECT kit_no FROM kit WHERE kit_id = $1", kit_id)
+        if kit_no is None:
+            raise KeyError(f"unknown kit {kit_id!r}")
+    current = await conn.fetchval("SELECT max(version) FROM config_version WHERE scope = $1 "
+                                  "AND kit_no IS NOT DISTINCT FROM $2", scope, kit_no)
+    if (current or 0) != base_version:
+        raise VersionConflict(scope, kit_id, base_version, current)
+    try:
+        async with conn.transaction():  # a savepoint when the caller already has a transaction
+            version_id = await conn.fetchval(
+                "INSERT INTO config_version (scope, kit_no, version, created_at, created_by, reason) "
+                "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+                scope, kit_no, base_version + 1, created_at, created_by, reason)
+            await conn.executemany(
+                "INSERT INTO config_value (version_id, key, value) VALUES ($1, $2, $3::jsonb)",
+                [(version_id, key, json.dumps(value)) for key, value in values.items()])
+    except asyncpg.UniqueViolationError:
+        current = await conn.fetchval("SELECT max(version) FROM config_version WHERE scope = $1 "
+                                      "AND kit_no IS NOT DISTINCT FROM $2", scope, kit_no)
+        raise VersionConflict(scope, kit_id, base_version, current) from None
+    return version_id
+
+
+ReloadHook = Callable[[ConfigSnapshot | None, ConfigSnapshot], Awaitable[None] | None]
+
+
+class ConfigCache:
+    """A process's resolved configuration: loaded once, reloaded on `config.changed` (01 §1.3.3).
+
+    Hooks get (old, new) after each reload; `alerts` uses this for `threshold_changed` (AL-16).
+    A failed reload keeps the last snapshot (04 §4.4).
+    """
+
+    def __init__(self, conn: asyncpg.Pool | asyncpg.Connection, catalogue: Mapping[str, KeyMeta] | None = None):
+        self._conn = conn
+        self._catalogue = catalogue if catalogue is not None else load_catalogue()
+        self._snapshot: ConfigSnapshot | None = None
+        self._hooks: list[ReloadHook] = []
+
+    @property
+    def snapshot(self) -> ConfigSnapshot:
+        if self._snapshot is None:
+            raise RuntimeError("configuration not loaded yet: await ConfigCache.load() first")
+        return self._snapshot
+
+    def on_reload(self, hook: ReloadHook) -> None:
+        self._hooks.append(hook)
+
+    def resolve(self, key: str, kit: str | None = None) -> Resolved:
+        return self.snapshot.resolve(key, kit)
+
+    def value(self, key: str, kit: str | None = None) -> Any:
+        return self.snapshot.value(key, kit)
+
+    async def load(self) -> ConfigSnapshot:
+        old, new = self._snapshot, await load_snapshot(self._conn, self._catalogue)
+        self._snapshot = new
+        log.info("config.reloaded", site_version=new.site.version, kits=len(new.kits))
+        for hook in self._hooks:
+            result = hook(old, new)
+            if inspect.isawaitable(result):
+                await result
+        return new
+
+    async def follow(self, dsn: str) -> None:
+        """Run forever: reload on every `config.changed`. Cancel the task to stop."""
+        async with events.listen(dsn, types={"config.changed"}) as inbox:
+            await self._reload_quietly()  # a change between load() and LISTEN is not missed
+            while True:
+                await inbox.get()
+                while not inbox.empty():  # several saves at once → one reload
+                    inbox.get_nowait()
+                await self._reload_quietly()
+
+    async def _reload_quietly(self) -> None:
+        try:
+            await self.load()
+        except (OSError, asyncpg.PostgresError) as e:
+            log.warning("config.reload_failed", error_detail=f"{type(e).__name__}: {e}")
 
 
 # --- sync into the database (DD110) ------------------------------------------------------------

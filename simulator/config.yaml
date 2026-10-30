@@ -1,0 +1,16 @@
+# Simulator configuration (design/11 §11.2). Kit passwords: simulator/.env, MQTT_PASSWORD_<KIT_ID>.
+# The kits must match the site file the server imported (config/example-site.yaml).
+broker: { host: localhost, port: 1883 }
+site_id: abc
+timezone: Asia/Kolkata               # for the daily cycle of the normal weather
+clock: { mode: real }                # demo mode (scenarios, faults, speed) arrives in M2.8; D39, DD125
+seed: 42
+kits:
+  - kit_id: KIT-01
+    lat: 13.081
+    lon: 80.271
+    elevation_m: 30
+    sampling_interval_s: 60
+    rain_mm_per_tip: 0.28
+    fw: "1.0.0-sim"
+    sensors: { dht11: true, wind_vane: false }

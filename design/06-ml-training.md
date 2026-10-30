@@ -118,6 +118,18 @@ Labels come from applying the hazard thresholds ([06 §6.1](../requirements/06-h
 - **Known bias:** ERA5 gusts and hourly rain are smoothed, so red gust and intensity events are rare in the labels. An event with fewer than 30 positive windows in its training period gets no classifier; it uses the TFT-derived probability (§6.8) and the model card says so.
 - The same labelling code produces the **back-test events** during site onboarding ([03 §3.8](03-database-schema.md)).
 
+**Rules of the shared code (DD133).** `ews.ml.features`, `ews.ml.labels` and `ews.ml.normals` are pure functions on pandas series with a UTC, end-labelled hourly index. They need nothing beyond numpy and pandas, so the Kaggle notebooks can import them without the backend's other packages.
+
+| Topic | Rule |
+|---|---|
+| Thresholds | Passed as arguments; the defaults are those of `config/defaults.yaml` (a test keeps them equal). A site's own values come from the resolver ([04 §4.2](04-configuration.md)) |
+| Window membership | A window (t₀ + a, t₀ + b] takes the hours whose **end** lies inside it; a calendar window likewise (rain day ending 03:00 UTC, local day of the site's time zone) |
+| Missing hours | A label is **1** if any present value meets the threshold (a partial sum for 24 h rain); **0** only if at least 80 % of the window's hours are present (`qc_coverage_min_pct`); otherwise unknown (NaN). Rolling features follow 05 §5.5.1: NaN below 80 % coverage, sums over the present hours. A daily maximum needs 80 % of the day's hours |
+| Day offsets | Rain `D0` = the rain day that contains t₀ (ends at the first 03:00 UTC **after** t₀), D1, D2 the next. Heat `D1`–`D3` = the local days after t₀'s local day; `D0` = t₀'s local day |
+| Normals | Mean daily maximum per calendar day over `normals_start_year`–`normals_end_year`, on a leap-year calendar (day 1–366; 29 February = day 60, its own value), then a centred `normals_smoothing_days` (15) moving average that wraps from 31 December to 1 January. A date looks up its leap-year day number |
+| Calendar features | Hour of day (fractional for rolling hours, [07 §7.3](07-forecast-worker.md)) and day of year in the **site's local time**, as sin/cos; month 1–12 |
+| Percentiles | `numpy` linear interpolation; rain burst = max(`rain_intensity_floor_mm`, `rain_intensity_percentile` of hours ≥ `rain_wet_hour_min_mm`) |
+
 ## 6.7 Splits (ML-02, D28)
 
 | Split | Stage 1 (TFT-base, base classifiers, LightGBM, persistence, climatology, Chronos-Bolt) | Stage 2 (TFT-NWP, NWP classifiers, Open-Meteo baseline) |

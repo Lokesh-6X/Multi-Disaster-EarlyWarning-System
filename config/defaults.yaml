@@ -5,7 +5,8 @@
 # Per key: type (number | integer | string | boolean | integer_list), levels (default, site, kit:
 # where a value may be set, CFG-02), default or region_defaults, optional computed_from, required
 # (levels where a value must exist), unit, rules (min, max, allowed, order group, ...), description.
-# Order groups (04 §4.4 step 7): members must increase in the listed order.
+# Order groups (04 §4.4 step 7): the order and comparisons of each group are defined in
+# ews.common.config_validation.ORDER_GROUPS (e.g. probabilities: watch off < watch on ≤ warning off < warning on).
 
 # --- 4.3.1 Site identity -----------------------------------------------------------------------
 

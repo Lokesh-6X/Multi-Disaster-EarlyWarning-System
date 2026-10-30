@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kit-reading",
+  "title": "Kit reading message (design/05 §5.2.2, DD42)",
+  "description": "Payload of sites/{site_id}/kits/{kit_id}/readings. Exactly these fields; at most 4 KB as UTF-8 JSON.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kit_id", "ts", "seq", "fw", "bme_temp_c", "bme_rh_pct", "bme_pressure_hpa",
+               "wind_avg_kmh", "wind_gust_kmh", "rain_tips"],
+  "properties": {
+    "kit_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$"},
+    "ts": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"},
+    "seq": {"type": "integer", "minimum": 0},
+    "fw": {"type": "string", "minLength": 1, "maxLength": 32},
+    "bme_temp_c": {"type": "number"},
+    "bme_rh_pct": {"type": "number"},
+    "bme_pressure_hpa": {"type": "number"},
+    "dht_temp_c": {"type": ["number", "null"]},
+    "dht_rh_pct": {"type": ["number", "null"]},
+    "wind_avg_kmh": {"type": "number", "minimum": 0},
+    "wind_gust_kmh": {"type": "number", "minimum": 0},
+    "wind_dir_deg": {"type": ["number", "null"], "minimum": 0, "exclusiveMaximum": 360},
+    "rain_tips": {"type": "integer", "minimum": 0},
+    "rssi_dbm": {"type": ["integer", "null"], "minimum": -130, "maximum": 0},
+    "uptime_s": {"type": ["integer", "null"], "minimum": 0}
+  }
+}

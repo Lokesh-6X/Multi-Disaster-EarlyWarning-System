@@ -8,7 +8,10 @@ from ews.common import config, migrations
 pytestmark = pytest.mark.integration
 
 TABLES = {"site", "kit", "config_key", "config_key_region_default", "config_version", "config_value",
-          "app_user", "process_heartbeat", "alembic_version"}
+          "app_user", "process_heartbeat", "alembic_version", "recipient", "recipient_hazard", "recipient_zone",
+          "user_session", "user_token", "user_alert_preference", "user_alert_hazard", "user_alert_type",
+          "audit_entry", "audit_change", "kit_firmware", "reading_raw", "reading_clean", "reading_derived",
+          "reading_qc_flag", "kit_status_event", "rejected_message"}
 
 
 async def test_upgrade_head_on_empty_schema(schema):

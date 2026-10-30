@@ -22,6 +22,11 @@ foreach ($name in $Processes) {
     Write-Host "  ${name}: stopped"
 }
 
+# The simulator first: killing it drops its connection, so the broker announces each kit offline (last will)
+$sim = Get-AliveProcess (Join-Path $Logs 'simulator.pid')
+if ($sim) { Stop-ProcessTree $sim.Id; Write-Host '  simulator: stopped' }
+Remove-Item (Join-Path $Logs 'simulator.pid') -ErrorAction SilentlyContinue
+
 foreach ($helper in @('mailpit', 'vite')) {
     $pidFile = Join-Path $Logs "$helper.pid"
     $p = Get-AliveProcess $pidFile

@@ -2,12 +2,13 @@
 .SYNOPSIS
   Starts the whole system (design/01 §1.7.4, NFR-05).
 .DESCRIPTION
-  1 Load .env   2 services (PostgreSQL, Mosquitto, Mailpit)   3 database check, migrations, settings sync
-  4 frontend    5 the five processes through run-process.ps1   6 simulator   7 URLs
+  1 Load .env   2 services (PostgreSQL, Mosquitto, Mailpit)   3 database check, migrations, settings sync,
+  -Seed import (only when no site exists)   4 frontend    5 the five processes through run-process.ps1   6 simulator   7 URLs
   The Windows services keep running after stop.ps1.
 .EXAMPLE
   scripts\start.ps1
   scripts\start.ps1 -Dev
+  scripts\start.ps1 -Seed config\example-site.yaml
   scripts\start.ps1 -Demo -Simulator squall
 #>
 param(
@@ -34,6 +35,10 @@ $smtpLocal = Test-LocalHost $envValues['SMTP_HOST']
 
 # Guards that need no running system (requirements D39, DD125)
 if ($Reset -and -not $Demo) { throw '-Reset only works with -Demo.' }
+if ($Seed) {
+    if (-not (Test-Path $Seed -PathType Leaf)) { throw "-Seed: file not found: $Seed" }
+    $seedFile = (Resolve-Path $Seed).Path    # before the script moves into backend\
+}
 if ($Simulator) {
     $standIn = @('replay', 'normal') -contains $Simulator
     if (-not $Demo -and -not $standIn) { throw "Simulator scenario '$Simulator' needs -Demo: simulated hazards never run on the real installation (D39, DD125)." }
@@ -76,10 +81,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'alembic upgrade head failed.' }
     & $Python -m ews.common.config sync    # DD110: before any process starts
     if ($LASTEXITCODE -ne 0) { throw 'Settings catalogue sync failed.' }
+    if ($Seed) {
+        # 04 §4.6, DD132: imports the site file only when no site exists yet (all or nothing)
+        & $Python -m ews.common.config_import $seedFile --if-no-site --reason "start.ps1 -Seed $Seed"
+        if ($LASTEXITCODE -ne 0) { throw "-Seed ${Seed}: nothing imported (see the problems above)." }
+    }
 } finally {
     Pop-Location
 }
-if ($Seed) { Write-Warning "-Seed $Seed : the site import arrives in M3; not imported." }
 
 # --- 4 frontend -------------------------------------------------------------------------------
 Write-Step 'Frontend'
@@ -124,7 +133,20 @@ foreach ($name in $Processes) {
 }
 
 # --- 6 simulator ------------------------------------------------------------------------------
-if ($Simulator) { Write-Warning "-Simulator $Simulator : the simulator arrives in M1; not started." }
+if ($Simulator -eq 'normal') {
+    # stand-in kit on the real clock (design/11 §11.4.0, DD125); scenarios and the demo clock come in M2.8
+    $simPid = Join-Path $Logs 'simulator.pid'
+    if (Get-AliveProcess $simPid) {
+        Write-Host '  simulator: already running'
+    } else {
+        $p = Start-Process -FilePath $Python -ArgumentList '-m', 'simulator', 'run' -WorkingDirectory (Join-Path $Repo 'simulator') `
+            -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Logs 'simulator.stdout.log') -RedirectStandardError (Join-Path $Logs 'simulator.stderr.log')
+        Set-Content $simPid $p.Id
+        Write-Host "  simulator: started (pid $($p.Id)), normal weather for the kits in simulator\config.yaml"
+    }
+} elseif ($Simulator) {
+    Write-Warning "-Simulator $Simulator : only 'normal' is started for now (replay by hand: python -m simulator run --replay ...; scenarios arrive in M2.8)."
+}
 
 # Wait for the five heartbeats (DD12)
 $database = 'ews'; if ($Demo) { $database = 'ews_demo' }

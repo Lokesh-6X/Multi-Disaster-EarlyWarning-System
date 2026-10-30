@@ -16,3 +16,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["simulator*"]
+
+[tool.setuptools.package-data]
+simulator = ["contract.schema.json"]
